@@ -16,3 +16,6 @@ spring.servlet.multipart.max-request-size=1200MB
 # Enable asynchronous processing, Limit the number of concurrent uploads
 spring.task.execution.pool.max-size=8
 ```
+
+### Taking Advantage of Virtual Threads in Java 21
+* We want to process file uploads asynchronously, used Java 21's virtual threads (which provide lightweight concurrency)
