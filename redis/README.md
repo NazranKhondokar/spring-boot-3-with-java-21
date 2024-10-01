@@ -1,3 +1,7 @@
+<div align="center">
+    <h1>Redis</h1>
+</div>
+
 ### Prerequisites
 - If `redis-server` are not configured then follow the instructions:
     * [Redis Installation](https://github.com/NazranKhondokar/continuousLearning/blob/main/redis/README.md)
