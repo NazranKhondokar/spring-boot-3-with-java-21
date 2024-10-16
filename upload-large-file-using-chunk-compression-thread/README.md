@@ -1,7 +1,6 @@
 # Upload Large File Using Chunk Compression Thread
 
 ### Reference Documentation
-Update Excel file specific cell and export the file:
 Run the project and `import` `curl` on `Postman`
 
 ```curl
