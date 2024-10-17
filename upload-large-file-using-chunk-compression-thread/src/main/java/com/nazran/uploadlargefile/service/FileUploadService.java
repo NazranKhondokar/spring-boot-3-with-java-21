@@ -28,15 +28,17 @@ public class FileUploadService {
     private String sftpPassword;
 
     private final Session sftpSession;
+    private final ProgressService progressService;
 
-    public FileUploadService(Session sftpSession) {
+    public FileUploadService(Session sftpSession, ProgressService progressService) {
         this.sftpSession = sftpSession;
+        this.progressService = progressService;
     }
 
     // Main method to handle the upload request
     public void uploadFile(File file, String remoteDir) throws Exception {
         List<File> compressedChunkFiles = splitAndCompressFile(file);
-        uploadFilesInParallel(compressedChunkFiles, remoteDir);
+        uploadFilesInParallel(compressedChunkFiles, remoteDir, file.getName());
     }
 
     // Split and compress the file into chunks
@@ -61,7 +63,7 @@ public class FileUploadService {
     }
 
     // Upload files in parallel using multithreading
-    private void uploadFilesInParallel(List<File> chunkFiles, String remoteDir) throws InterruptedException, ExecutionException {
+    private void uploadFilesInParallel(List<File> chunkFiles, String remoteDir, String originalFileName) throws InterruptedException, ExecutionException {
         ExecutorService executor = Executors.newFixedThreadPool(10); // Thread pool
         List<Future<Void>> futures = new ArrayList<>();
         long totalSize = chunkFiles.stream().mapToLong(File::length).sum(); // Total size of all chunks
@@ -73,6 +75,7 @@ public class FileUploadService {
                 synchronized (uploadedSize) {
                     uploadedSize[0] += chunkFile.length(); // Update progress
                     double progress = (double) uploadedSize[0] / totalSize * 100;
+                    progressService.updateProgress(originalFileName, progress); // Update the progress service
                     System.out.printf("Upload progress: %.2f%%%n", progress); // Print progress
                 }
                 return null;
@@ -84,6 +87,7 @@ public class FileUploadService {
         for (Future<Void> future : futures) {
             future.get();  // Wait for completion
         }
+        progressService.clearProgress(originalFileName); // Clear progress once done
         executor.shutdown();
     }
 
