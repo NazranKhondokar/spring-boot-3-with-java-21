@@ -60,5 +60,10 @@ public class FileUploadController {
         file.transferTo(convFile);
         return convFile;
     }
+
+    @GetMapping("/cal/{fileSizeMB}")
+    public void getCal(@PathVariable int fileSizeMB) {
+        fileUploadService.calculation(fileSizeMB);
+    }
 }
 
