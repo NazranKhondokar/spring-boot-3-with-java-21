@@ -29,6 +29,11 @@ public class FileUploadController {
     @RequestMapping(path = "/sftp", method = RequestMethod.POST, consumes = {"multipart/form-data"})
     public ResponseEntity<String> uploadFile(@RequestParam("file") MultipartFile multipartFile) {
         try {
+            //fetch file size
+            long fileSizeInBytes = multipartFile.getSize();
+            double fileSizeInMB = (double) fileSizeInBytes / (1024 * 1024); // Convert bytes to MB
+            long roundedFileSizeInMB = (long) Math.ceil(fileSizeInMB); // Round up to the nearest whole MB
+
             // Convert MultipartFile to a regular File
             File file = convertMultiPartToFile(multipartFile);
 
@@ -36,7 +41,7 @@ public class FileUploadController {
             String remoteDir = sftpRemoteDir;
 
             // Call service to handle upload
-            fileUploadService.uploadFile(file, remoteDir);
+            fileUploadService.uploadFile(file, remoteDir, roundedFileSizeInMB);
 
             // Delete temp file
             file.delete();
@@ -61,9 +66,9 @@ public class FileUploadController {
         return convFile;
     }
 
-    @GetMapping("/cal/{fileSizeMB}")
-    public void getCal(@PathVariable int fileSizeMB) {
-        fileUploadService.calculation(fileSizeMB);
-    }
+//    @GetMapping("/cal/{fileSizeMB}")
+//    public void getCal(@PathVariable int fileSizeMB) {
+//        fileUploadService.calculation(fileSizeMB);
+//    }
 }
 

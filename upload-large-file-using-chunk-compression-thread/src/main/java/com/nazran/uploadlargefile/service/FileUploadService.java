@@ -13,8 +13,17 @@ import java.util.zip.GZIPOutputStream;
 @Service
 public class FileUploadService {
 
-    private static final int CHUNK_SIZE_MB = 10;
-    private static final int THREAD_POOL = 10;
+    @Value("${sftp.max-mb-size}")
+    private int sftpMaxMBSize;
+
+    @Value("${sftp.chunk-mb-size}")
+    private int sftpChunkMBSize;
+
+    @Value("${sftp.thread-pool}")
+    private int sftpThreadPool;
+
+    @Value("${sftp.max-thread}")
+    private int sftpMaxThread;
 
     @Value("${sftp.host}")
     private String sftpHost;
@@ -37,15 +46,22 @@ public class FileUploadService {
     }
 
     // Main method to handle the upload request
-    public void uploadFile(File file, String remoteDir) throws Exception {
-        List<File> compressedChunkFiles = splitAndCompressFile(file);
-        uploadFilesInParallel(compressedChunkFiles, remoteDir, file.getName());
+    public void uploadFile(File file, String remoteDir, long fileSize) throws Exception {
+
+        // Calculate part count
+        long partCount = calculatePartCount(fileSize, sftpChunkMBSize, sftpMaxMBSize);
+        System.out.println("Part Count: " + partCount);
+        if (partCount == 0) partCount = 1;
+
+        List<File> compressedChunkFiles = splitAndCompressFile(file, fileSize, partCount);
+        uploadFilesInParallel(compressedChunkFiles, remoteDir, file.getName(), partCount);
     }
 
     // Split and compress the file into chunks
-    private List<File> splitAndCompressFile(File file) throws IOException {
+    private List<File> splitAndCompressFile(File file, long fileSize, long partCount) throws IOException {
         List<File> chunkFiles = new ArrayList<>();
-        byte[] buffer = new byte[getChunkSizeMb() * 1024 * 1024]; // Buffer for chunks
+
+        byte[] buffer = new byte[getChunkSizeMb(fileSize, partCount) * 1024 * 1024]; // Buffer for chunks
         String timestamp = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date()); // Timestamp
 
         try (FileInputStream fis = new FileInputStream(file)) {
@@ -64,8 +80,10 @@ public class FileUploadService {
     }
 
     // Upload files in parallel using multithreading
-    private void uploadFilesInParallel(List<File> chunkFiles, String remoteDir, String originalFileName) throws InterruptedException, ExecutionException {
-        ExecutorService executor = Executors.newFixedThreadPool(getFixedThreadPool()); // Thread pool
+    private void uploadFilesInParallel(List<File> chunkFiles, String remoteDir, String originalFileName, long partCount) throws InterruptedException, ExecutionException {
+        long parallelThread = calculateParallelThread(partCount, sftpMaxThread);
+
+        ExecutorService executor = Executors.newFixedThreadPool((int) parallelThread); // Thread pool
         List<Future<Void>> futures = new ArrayList<>();
         long totalSize = chunkFiles.stream().mapToLong(File::length).sum(); // Total size of all chunks
         long[] uploadedSize = {0}; // To track the uploaded size
@@ -117,35 +135,13 @@ public class FileUploadService {
         return session;
     }
 
-    private int getChunkSizeMb() {
-
-        return CHUNK_SIZE_MB;
+    private int getChunkSizeMb(long fileSize, long partCount) {
+        System.out.println("Chunk MB size: " + (int) (fileSize / partCount));
+        return (int) (fileSize / partCount);
     }
 
-    private int getFixedThreadPool() {
-
-        return THREAD_POOL;
-    }
-
-    public void calculation(int fileSizeMB) {
-
-//        int fileSizeMB = 400;            // A2
-        int perFileChunkMB = 10;         // B2
-        int maxLimitMB = 25;             // C2
-        int maxThread = 15;              // E2
-
-        // Calculate part count
-        int partCount = calculatePartCount(fileSizeMB, perFileChunkMB, maxLimitMB);
-        System.out.println("Part Count: " + partCount);
-
-        // Calculate parallel thread
-        int parallelThread = calculateParallelThread(partCount, maxThread);
-        System.out.println("Parallel Thread: " + parallelThread);
-    }
-
-    // Method to calculate part count based on formula: IF(A2/B2 > C2, A2/C2, A2/B2)
-    public static int calculatePartCount(int fileSizeMB, int perFileChunkMB, int maxLimitMB) {
-        int partCount;
+    public static long calculatePartCount(long fileSizeMB, int perFileChunkMB, int maxLimitMB) {
+        long partCount;
         if (fileSizeMB / perFileChunkMB > maxLimitMB) {
             partCount = fileSizeMB / maxLimitMB;
         } else {
@@ -154,8 +150,7 @@ public class FileUploadService {
         return partCount;
     }
 
-    // Method to calculate parallel thread based on formula: IF(D2 < E2, D2, E2)
-    public static int calculateParallelThread(int partCount, int maxThread) {
+    public static long calculateParallelThread(long partCount, int maxThread) {
         return Math.min(partCount, maxThread);
     }
 }
