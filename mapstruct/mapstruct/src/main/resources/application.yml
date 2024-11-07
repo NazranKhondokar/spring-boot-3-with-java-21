@@ -29,17 +29,10 @@ spring:
 
   # Database Configuration
   datasource:
-    url: jdbc:mysql://180.211.137.8:3306/bitcoin_canvas_db
-    username: bitcoin
-    password: bitcoin@123456
+    url: jdbc:mysql://localhost:3306/bitcoin_canvas_db
+    username: root
+    password: root
     driver-class-name: com.mysql.cj.jdbc.Driver
-
-    # Database Configuration
-    #  datasource:
-    #    url: jdbc:mysql://localhost:3306/bitcoin_canvas_db
-    #    username: root
-    #    password: root
-    #    driver-class-name: com.mysql.cj.jdbc.Driver
 
     # Hikari Configuration
     hikari:
