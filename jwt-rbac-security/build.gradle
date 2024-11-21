@@ -1,0 +1,46 @@
+plugins {
+	id 'org.springframework.boot' version '3.2.0'
+	id 'io.spring.dependency-management' version '1.1.3'
+	id 'java'
+}
+
+group = 'com.nazran.jwtrbacsecurity'
+version = '1.0.0'
+sourceCompatibility = '21'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	// Spring Boot Starter for Web
+	implementation 'org.springframework.boot:spring-boot-starter-web'
+
+	// Spring Boot Starter Security
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+
+	// JWT Support
+	implementation 'io.jsonwebtoken:jjwt-api:0.11.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.11.5'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.11.5' // For JSON handling
+
+	// Spring Boot Starter for Data JPA
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+
+	// H2 Database
+	runtimeOnly 'com.h2database:h2'
+
+	// Lombok for Cleaner Code
+	compileOnly 'org.projectlombok:lombok'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	// Spring Boot Test Starter
+	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+
+	// Spring Security Test
+	testImplementation 'org.springframework.security:spring-security-test'
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
