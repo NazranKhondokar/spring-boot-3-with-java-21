@@ -1,5 +1,5 @@
 <div align="center">
-  <h1>Realtime chat using web socket</h1>
+  <h1>Realtime chat using web socket, STOMP</h1>
 </div>
 
 # Table of Contents
