@@ -1,0 +1,91 @@
+# Server Configuration
+server:
+  port: 8000
+
+  error:
+    include-stacktrace: always
+  compression:
+    enabled: true
+  address: 0.0.0.0
+
+# Spring Configuration
+spring:
+  jackson:
+    date-format: yyyy-MM-dd'T'HH:mm:ss.SSSXXX
+    time-zone: UTC
+  application:
+    name: real-time-chat-web-socket-stomp
+  main:
+    allow-bean-definition-overriding: true
+
+  # Database Configuration
+  datasource:
+    url: jdbc:postgresql://${DB_HOST}:${DB_PORT}/${DB_NAME}
+    username: ${DB_USER}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      minimum-idle: 1
+      maximum-pool-size: 15
+      idle-timeout: 30000
+      pool-name: HikariPostgresPool
+      max-lifetime: 2000000
+      auto-commit: true
+      transaction-isolation: TRANSACTION_READ_COMMITTED
+      connection-timeout: 30000
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    validate-migration-naming: true
+    ignore-unsupported-database: true
+    locations: "classpath:db/migration"
+    schemas: ${DB_SCHEMA}
+
+  # JPA Configuration
+  jpa:
+    # Hibernate
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+    open-in-view: false
+    properties:
+      hibernate.format_sql: true
+
+
+  # Servlet Configuration
+  servlet:
+    multipart:
+      enabled: true
+      location: /tmp
+      max-file-size: ${AVATAR_MAX_SIZE}
+      max-request-size: ${AVATAR_MAX_SIZE}
+      resolve-lazily: false
+
+application:
+  security:
+    jwt:
+      secret-key: 4bb6d1dfbafb64a681139d1586b6f1160d18159afd57c8c79136d7490630407c
+      access-token-expiration: 86400000
+      refresh-token-expiration: 604800000
+
+# Management Configuration
+management:
+  endpoints:
+    web:
+      exposure:
+        include: "*"
+
+logging:
+  level:
+    org.springdoc: DEBUG
+
+  doc: # Swagger-specific settings
+    api-docs:
+      path: /v3/api-docs
+    swagger-ui:
+      path: /swagger-ui.html
+
+firebase:
+  config:
+    path: firebase-service-account.json
