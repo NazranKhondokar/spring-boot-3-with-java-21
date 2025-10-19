@@ -12,6 +12,434 @@
 - [PostgreSQL Installation](#postgresql-installation)
 - [Run with `docker compose`](#run-application-using-docker-compose)
 
+# Real-Time Chat System - Architecture & Implementation Guide
+
+## System Overview
+
+Real-time chat between customers and super_admins using WebSocket for bidirectional communication, with persistent storage and message delivery guarantees.
+
+---
+
+## Architecture Diagram
+
+```
+┌─────────────────┐                    ┌──────────────────┐
+│   Next.js       │                    │   Spring Boot    │
+│   Frontend      │◄──────WebSocket────►│   Backend        │
+│   (Customer)    │                    │                  │
+└─────────────────┘                    └──────────────────┘
+        ▲                                        ▲
+        │                                        │
+        │ HTTP (REST)                            │
+        │                                        │
+        ▼                                        ▼
+┌─────────────────┐                    ┌──────────────────┐
+│   Next.js       │                    │  PostgreSQL      │
+│   Admin Panel   │                    │  Database        │
+│   (Super Admin) │                    │                  │
+└─────────────────┘                    ├──────────────────┤
+                                       │ Redis (Optional) │
+                                       │ Message Queue    │
+                                       └──────────────────┘
+```
+
+---
+
+## Core Components
+
+### 1. Database Schema
+
+**Tables to Create:**
+
+```sql
+-- Conversations table
+CREATE TABLE conversations (
+    id SERIAL PRIMARY KEY,
+    customer_id INT NOT NULL REFERENCES users(id),
+    super_admin_id INT REFERENCES users(id),
+    status ENUM ('OPEN', 'CLOSED', 'ASSIGNED') DEFAULT 'OPEN',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_message_at TIMESTAMP
+);
+
+-- Messages table
+CREATE TABLE messages (
+    id SERIAL PRIMARY KEY,
+    conversation_id INT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+    sender_id INT NOT NULL REFERENCES users(id),
+    content TEXT NOT NULL,
+    message_type ENUM ('TEXT', 'FILE', 'SYSTEM') DEFAULT 'TEXT',
+    is_read BOOLEAN DEFAULT FALSE,
+    read_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Message attachments table
+CREATE TABLE message_attachments (
+    id SERIAL PRIMARY KEY,
+    message_id INT NOT NULL REFERENCES messages(id) ON DELETE CASCADE,
+    file_url VARCHAR(500),
+    file_name VARCHAR(255),
+    file_size BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Chat status tracking (online/offline)
+CREATE TABLE user_presence (
+    user_id INT PRIMARY KEY REFERENCES users(id),
+    is_online BOOLEAN DEFAULT FALSE,
+    last_seen TIMESTAMP,
+    device_info VARCHAR(255)
+);
+
+-- Unread message count (for performance)
+CREATE TABLE conversation_unread_count (
+    conversation_id INT PRIMARY KEY REFERENCES conversations(id),
+    user_id INT NOT NULL REFERENCES users(id),
+    unread_count INT DEFAULT 0,
+    UNIQUE(conversation_id, user_id)
+);
+```
+
+---
+
+## Backend Implementation Steps
+
+### Step 1: Add WebSocket Dependencies
+
+Update `build.gradle`:
+```gradle
+implementation 'org.springframework.boot:spring-boot-starter-websocket'
+implementation 'org.springframework.boot:spring-boot-starter-websocket-tomcat'
+implementation 'org.springframework:spring-messaging'
+implementation 'redis:redis-java:2.9.0' // For pub/sub
+```
+
+### Step 2: Create WebSocket Configuration
+
+```java
+@Configuration
+@EnableWebSocketMessageBroker
+public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
+    
+    @Override
+    public void registerStompEndpoints(StompEndpointRegistry registry) {
+        // WebSocket endpoint
+        registry.addEndpoint("/api/v1/ws/chat")
+                .setAllowedOrigins("http://localhost:3000", "https://consultinghub.xyz")
+                .withSockJS();
+    }
+    
+    @Override
+    public void configureMessageBroker(MessageBrokerRegistry config) {
+        // Use Redis for scalability (or simple in-memory broker for MVP)
+        config.setApplicationDestinationPrefixes("/app")
+              .enableSimpleBroker("/topic", "/queue");
+    }
+}
+```
+
+### Step 3: Create Entity Models
+
+**Conversation Entity:**
+- `id`, `customerId`, `superAdminId`
+- `status` (OPEN, CLOSED, ASSIGNED)
+- `createdAt`, `updatedAt`, `lastMessageAt`
+
+**Message Entity:**
+- `id`, `conversationId`, `senderId`
+- `content`, `messageType` (TEXT, FILE, SYSTEM)
+- `isRead`, `readAt`
+- `createdAt`, `updatedAt`
+
+**UserPresence Entity:**
+- `userId`, `isOnline`, `lastSeen`
+
+### Step 4: Create DTOs
+
+```java
+// Message DTO
+@Data
+public class MessageDto {
+    private Long id;
+    private Long conversationId;
+    private Long senderId;
+    private String senderName;
+    private String content;
+    private MessageType messageType;
+    private Boolean isRead;
+    private LocalDateTime createdAt;
+    private List<MessageAttachmentDto> attachments;
+}
+
+// Conversation DTO
+@Data
+public class ConversationDto {
+    private Long id;
+    private Long customerId;
+    private Long superAdminId;
+    private String status;
+    private Long unreadCount;
+    private MessageDto lastMessage;
+    private LocalDateTime lastMessageAt;
+}
+
+// Incoming message from client
+@Data
+public class ChatMessageRequest {
+    @NotBlank
+    private String content;
+    private MessageType messageType;
+    private Long conversationId;
+}
+
+// Outgoing message to client
+@Data
+public class ChatMessageResponse {
+    private Long id;
+    private Long conversationId;
+    private Long senderId;
+    private String senderName;
+    private String content;
+    private MessageType messageType;
+    private LocalDateTime createdAt;
+    private String status; // SENT, DELIVERED, READ
+}
+```
+
+### Step 5: Create Repository Interfaces
+
+```java
+@Repository
+public interface ConversationRepository extends JpaRepository<Conversation, Long> {
+    Optional<Conversation> findByCustomerIdAndSuperAdminId(Long customerId, Long adminId);
+    List<Conversation> findByCustomerIdOrderByLastMessageAtDesc(Long customerId);
+    List<Conversation> findBySuperAdminIdOrderByLastMessageAtDesc(Long adminId);
+}
+
+@Repository
+public interface MessageRepository extends JpaRepository<Message, Long> {
+    List<Message> findByConversationIdOrderByCreatedAtDesc(Long conversationId, Pageable pageable);
+    Long countByConversationIdAndIsReadFalseAndSenderIdNot(Long conversationId, Long userId);
+}
+
+@Repository
+public interface UserPresenceRepository extends JpaRepository<UserPresence, Long> {
+    Optional<UserPresence> findByUserId(Long userId);
+}
+```
+
+### Step 6: Implement Chat Service
+
+**Core Responsibilities:**
+- Create/retrieve conversations
+- Save messages to database
+- Manage read receipts
+- Handle file uploads
+- Track presence
+
+### Step 7: WebSocket Message Handler
+
+```java
+@Component
+@Slf4j
+public class ChatMessageHandler {
+    
+    @MessageMapping("/chat/send")
+    @SendToUser("/queue/messages")
+    public ChatMessageResponse handleMessage(
+            @Payload ChatMessageRequest message,
+            Principal principal) {
+        
+        // 1. Authenticate sender
+        // 2. Validate conversation ownership
+        // 3. Save message to database
+        // 4. Broadcast to recipient via STOMP
+        // 5. Update unread count
+        // 6. Return response
+    }
+    
+    @MessageMapping("/chat/typing")
+    public void handleTypingIndicator(
+            @Payload TypingIndicator indicator,
+            Principal principal) {
+        // Broadcast typing status without persisting
+    }
+    
+    @MessageMapping("/chat/read")
+    public void handleReadReceipt(
+            @Payload ReadReceiptDto receipt,
+            Principal principal) {
+        // Mark messages as read
+        // Broadcast read status
+    }
+}
+```
+
+### Step 8: Implement Chat Controller (REST Endpoints)
+
+```java
+@RestController
+@RequestMapping("/api/v1/chat")
+public class ChatController {
+    
+    @GetMapping("/conversations")
+    public ResponseEntity<Page<ConversationDto>> getConversations() {
+        // Get conversations for current user
+    }
+    
+    @GetMapping("/conversations/{id}/messages")
+    public ResponseEntity<Page<MessageDto>> getConversationMessages(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "0") int page) {
+        // Get paginated messages for conversation
+    }
+    
+    @PostMapping("/conversations")
+    public ResponseEntity<ConversationDto> createConversation(
+            @RequestBody CreateConversationRequest request) {
+        // Create new conversation with super_admin
+    }
+    
+    @PutMapping("/conversations/{id}/close")
+    public ResponseEntity<Void> closeConversation(@PathVariable Long id) {
+        // Close conversation
+    }
+}
+```
+
+---
+
+## Performance Optimization Strategies
+
+### 1. Message Pagination
+- Load last 20-50 messages initially
+- Implement "load more" functionality
+- Index `conversation_id` and `created_at` in messages table
+
+### 2. Caching Layer
+```yaml
+# Redis configuration
+spring:
+  redis:
+    host: localhost
+    port: 6379
+```
+
+- Cache recent conversations (TTL: 5 minutes)
+- Cache unread message counts
+- Cache user presence
+
+### 3. Database Indexing
+```sql
+CREATE INDEX idx_messages_conversation_created 
+ON messages(conversation_id, created_at DESC);
+
+CREATE INDEX idx_conversations_customer 
+ON conversations(customer_id, last_message_at DESC);
+
+CREATE INDEX idx_messages_read_status 
+ON messages(conversation_id, is_read);
+```
+
+### 4. Connection Management
+- Use Hikari connection pool (already configured)
+- Set maximum WebSocket connections limit
+- Implement heartbeat/ping-pong to detect stale connections
+
+### 5. Message Queue (Optional - For Scalability)
+```yaml
+# For multiple server instances
+spring:
+  rabbitmq:
+    host: localhost
+    port: 5672
+```
+
+Use RabbitMQ or Kafka for:
+- Reliable message delivery
+- Scaling across multiple servers
+- Decoupling message processing
+
+### 6. Read Receipt Optimization
+- Batch read receipt updates
+- Use async processing for marking messages as read
+- Don't persist every intermediate state
+
+---
+
+## Security Considerations
+
+### 1. Authentication
+- Validate Firebase token at WebSocket handshake
+- Verify user ownership of conversations
+- Use Principal from Spring Security
+
+### 2. Authorization
+- Customers can only chat with super_admins
+- Customers can only see their own conversations
+- Super_admins can see all assigned conversations
+
+### 3. Message Validation
+- Sanitize message content (XSS prevention)
+- Validate file uploads (size, type)
+- Rate limit messages per user (e.g., 10 msgs/second)
+
+### 4. Data Privacy
+- Encrypt sensitive data at rest (optional)
+- Use HTTPS/WSS for all connections
+- GDPR compliance: allow message deletion
+
+---
+
+## Implementation Sequence
+
+1. **Database setup** - Create tables and indices
+2. **Entity models** - Define JPA entities and DTOs
+3. **Repositories** - Implement data access layer
+4. **Core service** - ChatService with business logic
+5. **WebSocket config** - Enable STOMP messaging
+6. **Message handler** - Implement chat message routing
+7. **REST controller** - History and metadata endpoints
+8. **Presence management** - Track online/offline status
+9. **Error handling** - Global exception handler for chat
+10. **Testing** - Unit and integration tests
+11. **Performance tuning** - Add caching and optimization
+12. **Monitoring** - Logging and metrics
+
+---
+
+## Key File Structure
+
+```
+src/main/java/com/nexalinx/nexadoc/
+├── chat/
+│   ├── config/
+│   │   └── WebSocketConfig.java
+│   ├── controller/
+│   │   └── ChatController.java
+│   ├── entity/
+│   │   ├── Conversation.java
+│   │   ├── Message.java
+│   │   └── UserPresence.java
+│   ├── dto/
+│   │   ├── ChatMessageRequest.java
+│   │   ├── ChatMessageResponse.java
+│   │   └── ConversationDto.java
+│   ├── repository/
+│   │   ├── ConversationRepository.java
+│   │   ├── MessageRepository.java
+│   │   └── UserPresenceRepository.java
+│   ├── service/
+│   │   ├── ChatService.java
+│   │   └── MessageService.java
+│   ├── handler/
+│   │   └── ChatMessageHandler.java
+│   └── exception/
+│       └── ChatException.java
+```
 
 # Java 17 Installation
 To install Java 17 on Ubuntu 24.04, you can follow these steps:
