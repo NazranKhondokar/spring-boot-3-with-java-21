@@ -56,5 +56,5 @@ public class Message extends BaseEntityWithUpdate {
      * One-to-many relationship with message attachments.
      */
     @OneToMany(mappedBy = "message", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
-    private Set<MessageAttachment> attachments = new HashSet<>();
+    private Set<MediaStorage> attachments = new HashSet<>();
 }

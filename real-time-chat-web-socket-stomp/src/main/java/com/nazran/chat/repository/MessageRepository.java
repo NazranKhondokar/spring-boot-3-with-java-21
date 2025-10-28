@@ -19,11 +19,21 @@ import java.util.List;
 @Repository
 public interface MessageRepository extends JpaRepository<Message, Integer> {
 
+
     /**
      * Find messages by conversation ID, ordered by creation time descending (latest first).
      *
      * @param conversationId the conversation ID
-     * @param pageable pagination parameters
+     * @return page of messages
+     */
+    @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId ORDER BY m.createdAt DESC")
+    List<Message> findByConversationIdOrderByCreatedAtDesc(@Param("conversationId") Integer conversationId);
+
+    /**
+     * Find messages by conversation ID, ordered by creation time descending (latest first).
+     *
+     * @param conversationId the conversation ID
+     * @param pageable       pagination parameters
      * @return page of messages
      */
     @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId ORDER BY m.createdAt DESC")
@@ -34,7 +44,7 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
      * Find messages by conversation ID, ordered by creation time ascending (oldest first).
      *
      * @param conversationId the conversation ID
-     * @param pageable pagination parameters
+     * @param pageable       pagination parameters
      * @return page of messages
      */
     @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId ORDER BY m.createdAt ASC")
@@ -45,7 +55,7 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
      * Count unread messages in a conversation for a specific user (recipient).
      *
      * @param conversationId the conversation ID
-     * @param senderId the sender ID to exclude
+     * @param senderId       the sender ID to exclude
      * @return count of unread messages
      */
     @Query("SELECT COUNT(m) FROM Message m WHERE m.conversation.id = :conversationId " +
@@ -57,7 +67,7 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
      * Find unread messages in a conversation for a specific user.
      *
      * @param conversationId the conversation ID
-     * @param senderId the sender ID to exclude
+     * @param senderId       the sender ID to exclude
      * @return list of unread messages
      */
     @Query("SELECT m FROM Message m WHERE m.conversation.id = :conversationId " +
@@ -69,8 +79,8 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
      * Mark all messages in a conversation as read for a specific recipient.
      *
      * @param conversationId the conversation ID
-     * @param senderId the sender ID to exclude (messages sent by this user won't be marked)
-     * @param readAt the read timestamp
+     * @param senderId       the sender ID to exclude (messages sent by this user won't be marked)
+     * @param readAt         the read timestamp
      * @return number of messages updated
      */
     @Modifying
@@ -93,8 +103,8 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
      * Find messages by type in a conversation.
      *
      * @param conversationId the conversation ID
-     * @param messageType the message type
-     * @param pageable pagination parameters
+     * @param messageType    the message type
+     * @param pageable       pagination parameters
      * @return page of messages
      */
     Page<Message> findByConversationIdAndMessageType(Integer conversationId,
@@ -113,8 +123,8 @@ public interface MessageRepository extends JpaRepository<Message, Integer> {
      * Find messages sent by a user in a conversation.
      *
      * @param conversationId the conversation ID
-     * @param senderId the sender ID
-     * @param pageable pagination parameters
+     * @param senderId       the sender ID
+     * @param pageable       pagination parameters
      * @return page of messages
      */
     Page<Message> findByConversationIdAndSenderId(Integer conversationId,

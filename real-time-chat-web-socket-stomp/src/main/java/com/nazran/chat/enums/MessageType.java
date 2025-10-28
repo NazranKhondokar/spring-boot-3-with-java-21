@@ -7,7 +7,9 @@ public enum MessageType {
     TEXT("TEXT"),
     FILE("FILE"),
     IMAGE("IMAGE"),
-    SYSTEM("SYSTEM");
+    SYSTEM("SYSTEM"),
+    VIDEO("VIDEO"),
+    AUDIO("AUDIO");
 
     private final String label;
 
