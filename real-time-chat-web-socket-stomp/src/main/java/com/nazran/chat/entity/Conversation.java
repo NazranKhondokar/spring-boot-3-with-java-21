@@ -5,6 +5,8 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.io.Serial;
 import java.time.OffsetDateTime;
@@ -40,7 +42,8 @@ public class Conversation extends BaseEntityWithUpdate {
     private User superAdmin;
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "status", nullable = false, length = 20)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "status", nullable = false)
     private ConversationStatus status = ConversationStatus.OPEN;
 
     @Column(name = "last_message_at")
