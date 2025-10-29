@@ -1,5 +1,8 @@
 package com.nazran.chat.controller;
 
+import com.nazran.chat.entity.User;
+import com.nazran.chat.exception.CustomMessagePresentException;
+import com.nazran.chat.repository.UserRepository;
 import com.nazran.chat.service.UserPresenceService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -23,6 +26,7 @@ import java.util.Map;
 public class PresenceWebSocketController {
 
     private final UserPresenceService userPresenceService;
+    private final UserRepository userRepository;
 
     /**
      * Handle user presence update (heartbeat).
@@ -114,9 +118,16 @@ public class PresenceWebSocketController {
     // Helper Methods
     // =====================================================
 
+    /**
+     * Retrieves user by Firebase User ID or throws an exception.
+     *
+     * @param firebaseUserId the Firebase user ID to search for
+     * @return the found User entity
+     * @throws CustomMessagePresentException if no user found with the Firebase ID
+     */
     private Integer getUserIdFromFirebaseUid(String firebaseUserId) {
-        // TODO: Implement actual logic
-        log.warn("TODO: Implement getUserIdFromFirebaseUid in PresenceController");
-        return 1; // Replace with actual implementation
+        User user = userRepository.findByFirebaseUserId(firebaseUserId)
+                .orElseThrow(() -> new CustomMessagePresentException("User does not exist for this Firebase User Id"));
+        return user.getId();
     }
 }
