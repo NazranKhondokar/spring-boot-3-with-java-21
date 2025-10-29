@@ -1,21 +1,25 @@
 package com.nazran.chat.controller;
 
 import com.nazran.chat.service.UserPresenceService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.stereotype.Controller;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.security.Principal;
 import java.util.Map;
 
 /**
  * WebSocket controller for handling user presence updates.
  */
 @Slf4j
-@Controller
+@RestController
 @RequiredArgsConstructor
+@Tag(name = "User Presence", description = "User presence management API over WebSocket")
 public class PresenceWebSocketController {
 
     private final UserPresenceService userPresenceService;
@@ -25,17 +29,21 @@ public class PresenceWebSocketController {
      * Client should send this periodically to maintain online status.
      *
      * @param payload   the presence data
-     * @param principal the authenticated user
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/presence/heartbeat")
+    @Operation(
+            summary = "Send presence heartbeat",
+            description = "Client sends periodic heartbeat to maintain online status. Should be sent every 30-60 seconds."
+    )
     public void handlePresenceHeartbeat(
+            @Parameter(description = "Presence data including device information")
             @Payload Map<String, Object> payload,
-            Principal principal) {
+            @AuthenticationPrincipal String firebaseUserId) {
 
-        log.debug("Presence heartbeat from user: {}", principal.getName());
+        log.debug("Presence heartbeat from user: {}", firebaseUserId);
 
         try {
-            String firebaseUserId = principal.getName();
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             String deviceInfo = (String) payload.getOrDefault("deviceInfo", "unknown");
@@ -52,17 +60,21 @@ public class PresenceWebSocketController {
      * Handle user going online explicitly.
      *
      * @param payload   the presence data
-     * @param principal the authenticated user
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/presence/online")
+    @Operation(
+            summary = "Mark user as online",
+            description = "Explicitly marks the user as online when they connect or become active."
+    )
     public void handleUserOnline(
+            @Parameter(description = "Presence data including device information")
             @Payload Map<String, Object> payload,
-            Principal principal) {
+            @AuthenticationPrincipal String firebaseUserId) {
 
-        log.info("User going online: {}", principal.getName());
+        log.info("User going online: {}", firebaseUserId);
 
         try {
-            String firebaseUserId = principal.getName();
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             String deviceInfo = (String) payload.getOrDefault("deviceInfo", "web");
@@ -77,15 +89,18 @@ public class PresenceWebSocketController {
     /**
      * Handle user going offline explicitly.
      *
-     * @param principal the authenticated user
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/presence/offline")
-    public void handleUserOffline(Principal principal) {
+    @Operation(
+            summary = "Mark user as offline",
+            description = "Explicitly marks the user as offline when they disconnect or become inactive."
+    )
+    public void handleUserOffline(@AuthenticationPrincipal String firebaseUserId) {
 
-        log.info("User going offline: {}", principal.getName());
+        log.info("User going offline: {}", firebaseUserId);
 
         try {
-            String firebaseUserId = principal.getName();
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             userPresenceService.markUserOffline(userId);

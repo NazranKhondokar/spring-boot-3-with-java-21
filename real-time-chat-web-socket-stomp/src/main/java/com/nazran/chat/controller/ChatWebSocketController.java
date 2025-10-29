@@ -6,15 +6,21 @@ import com.nazran.chat.dto.request.TypingIndicatorRequest;
 import com.nazran.chat.dto.response.MessageResponse;
 import com.nazran.chat.dto.websocket.ReadReceiptDto;
 import com.nazran.chat.dto.websocket.TypingIndicatorDto;
+import com.nazran.chat.entity.User;
+import com.nazran.chat.exception.CustomMessagePresentException;
+import com.nazran.chat.repository.UserRepository;
 import com.nazran.chat.service.ChatService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
-import org.springframework.stereotype.Controller;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.RestController;
 
-import java.security.Principal;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
@@ -24,35 +30,37 @@ import java.time.format.DateTimeFormatter;
  * Uses STOMP protocol over WebSocket.
  */
 @Slf4j
-@Controller
+@RestController
 @RequiredArgsConstructor
+@Tag(name = "Chat WebSocket", description = "Real-time chat messaging API over WebSocket using STOMP protocol")
 public class ChatWebSocketController {
 
     private final ChatService chatService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final UserRepository userRepository;
 
     /**
      * Handle incoming chat messages from clients.
      * Message is sent to /app/chat/send and broadcasted to conversation subscribers.
      *
      * @param request   the message request
-     * @param principal the authenticated user
-     * @return message response
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/chat/send")
+    @Operation(
+            summary = "Send a chat message",
+            description = "Sends a message to a conversation and broadcasts it to all participants subscribed to the conversation topic."
+    )
     public void handleSendMessage(
+            @Parameter(description = "Message request containing conversation ID, content, and optional metadata")
             @Payload SendMessageRequest request,
-            Principal principal) {
+            @AuthenticationPrincipal String firebaseUserId) {
 
         log.info("Received message from user: {} for conversation: {}",
-                principal.getName(), request.getConversationId());
+                firebaseUserId, request.getConversationId());
 
         try {
             // Get user ID from principal (Firebase UID)
-            String firebaseUserId = principal.getName();
-
-            // TODO: Get actual user ID from Firebase UID
-            // For now, assuming you have a method to get user ID
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             // Send message through service
@@ -71,7 +79,7 @@ public class ChatWebSocketController {
 
             // Send error back to sender
             messagingTemplate.convertAndSendToUser(
-                    principal.getName(),
+                    firebaseUserId,
                     "/queue/errors",
                     "Failed to send message: " + e.getMessage()
             );
@@ -83,18 +91,22 @@ public class ChatWebSocketController {
      * Broadcasts typing status to conversation participants.
      *
      * @param request   the typing indicator request
-     * @param principal the authenticated user
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/chat/typing")
+    @Operation(
+            summary = "Send typing indicator",
+            description = "Broadcasts typing status to other participants in the conversation. Should be sent when user starts/stops typing."
+    )
     public void handleTypingIndicator(
+            @Parameter(description = "Typing indicator request with conversation ID and typing status")
             @Payload TypingIndicatorRequest request,
-            Principal principal) {
+            @AuthenticationPrincipal String firebaseUserId) {
 
         log.debug("Typing indicator from user: {} in conversation: {}",
-                principal.getName(), request.getConversationId());
+                firebaseUserId, request.getConversationId());
 
         try {
-            String firebaseUserId = principal.getName();
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             // Create typing indicator DTO
@@ -121,18 +133,22 @@ public class ChatWebSocketController {
      * Marks messages as read and broadcasts to conversation participants.
      *
      * @param request   the read receipt request
-     * @param principal the authenticated user
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/chat/read")
+    @Operation(
+            summary = "Mark messages as read",
+            description = "Marks one or more messages as read and broadcasts read receipt to conversation participants."
+    )
     public void handleReadReceipt(
+            @Parameter(description = "Read receipt request with conversation ID and message ID(s)")
             @Payload MarkAsReadRequest request,
-            Principal principal) {
+            @AuthenticationPrincipal String firebaseUserId) {
 
         log.info("Read receipt from user: {} for conversation: {}",
-                principal.getName(), request.getConversationId());
+                firebaseUserId, request.getConversationId());
 
         try {
-            String firebaseUserId = principal.getName();
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             // Mark messages as read
@@ -165,17 +181,21 @@ public class ChatWebSocketController {
      * Notifies other participants.
      *
      * @param conversationId the conversation ID
-     * @param principal      the authenticated user
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/chat/join")
+    @Operation(
+            summary = "Join a conversation",
+            description = "Notifies other participants when a user joins a conversation. Should be called when user opens/enters a conversation."
+    )
     public void handleJoinConversation(
+            @Parameter(description = "The ID of the conversation to join")
             @Payload Integer conversationId,
-            Principal principal) {
+            @AuthenticationPrincipal String firebaseUserId) {
 
-        log.info("User {} joining conversation: {}", principal.getName(), conversationId);
+        log.info("User {} joining conversation: {}", firebaseUserId, conversationId);
 
         try {
-            String firebaseUserId = principal.getName();
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             // Broadcast join event
@@ -194,17 +214,21 @@ public class ChatWebSocketController {
      * Notifies other participants.
      *
      * @param conversationId the conversation ID
-     * @param principal      the authenticated user
+     * @param firebaseUserId the authenticated user's Firebase UID
      */
     @MessageMapping("/chat/leave")
+    @Operation(
+            summary = "Leave a conversation",
+            description = "Notifies other participants when a user leaves a conversation. Should be called when user closes/exits a conversation."
+    )
     public void handleLeaveConversation(
+            @Parameter(description = "The ID of the conversation to leave")
             @Payload Integer conversationId,
-            Principal principal) {
+            @AuthenticationPrincipal String firebaseUserId) {
 
-        log.info("User {} leaving conversation: {}", principal.getName(), conversationId);
+        log.info("User {} leaving conversation: {}", firebaseUserId, conversationId);
 
         try {
-            String firebaseUserId = principal.getName();
             Integer userId = getUserIdFromFirebaseUid(firebaseUserId);
 
             // Broadcast leave event
@@ -223,18 +247,16 @@ public class ChatWebSocketController {
     // =====================================================
 
     /**
-     * TODO: Implement this method to get user ID from Firebase UID.
-     * You should query your user repository to get the internal user ID.
+     * Retrieves user by Firebase User ID or throws an exception.
+     *
+     * @param firebaseUserId the Firebase user ID to search for
+     * @return the found User entity
+     * @throws CustomMessagePresentException if no user found with the Firebase ID
      */
     private Integer getUserIdFromFirebaseUid(String firebaseUserId) {
-        // Placeholder - implement actual logic
-        // Example:
-        // return userRepository.findByFirebaseUserId(firebaseUserId)
-        //         .map(User::getId)
-        //         .orElseThrow(() -> new CustomMessagePresentException("User not found"));
-
-        log.warn("TODO: Implement getUserIdFromFirebaseUid - returning mock ID");
-        return 1; // Replace with actual implementation
+        User user = userRepository.findByFirebaseUserId(firebaseUserId)
+                .orElseThrow(() -> new CustomMessagePresentException("User does not exist for this Firebase User Id"));
+        return user.getId();
     }
 
     /**
