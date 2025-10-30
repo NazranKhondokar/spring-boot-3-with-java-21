@@ -51,7 +51,6 @@ export default function ChatPage() {
 
   const initializeChat = async () => {
     try {
-      // ✅ FIXED: Pass Firebase UID to WebSocket
       const firebaseUserId = user?.uid;
       if (!firebaseUserId) {
         console.error('No Firebase UID available');
@@ -70,7 +69,6 @@ export default function ChatPage() {
           // Subscribe to presence updates
           wsService.subscribeToPresence((data) => {
             console.log('Presence update:', data);
-            // Update user online status in conversations
             setConversations((prev) =>
               prev.map((conv) => {
                 if (conv.customer?.id === data.userId || conv.admin?.id === data.userId) {
@@ -86,7 +84,6 @@ export default function ChatPage() {
         },
         (error) => {
           console.error('WebSocket error:', error);
-          // Optionally show error to user
         }
       );
 
@@ -112,17 +109,14 @@ export default function ChatPage() {
     try {
       const response = await apiService.getMessages(conversationId);
       const msgs = response.data.content || [];
-      setMessages(msgs.reverse()); // Reverse to show oldest first
+      setMessages(msgs.reverse());
 
-      // Join conversation
       wsService.joinConversation(conversationId);
 
-      // Subscribe to new messages
       wsService.subscribeToConversation(conversationId, (newMessage) => {
         console.log('📨 New message received:', newMessage);
         setMessages((prev) => [...prev, newMessage]);
 
-        // Update conversation last message
         setConversations((prev) =>
           prev.map((conv) =>
             conv.id === conversationId
@@ -132,9 +126,7 @@ export default function ChatPage() {
         );
       });
 
-      // Subscribe to typing indicators
       wsService.subscribeToTyping(conversationId, (data) => {
-        // Don't show own typing indicator
         if (data.userId !== userData?.id) {
           if (data.isTyping) {
             setTypingUsers((prev) => new Set(prev).add(data.userId));
@@ -148,10 +140,8 @@ export default function ChatPage() {
         }
       });
 
-      // Subscribe to read receipts
       wsService.subscribeToReadReceipts(conversationId, (data) => {
         console.log('Read receipt:', data);
-        // Mark messages as read in UI
         if (data.userId !== userData?.id) {
           setMessages((prev) =>
             prev.map((msg) =>
@@ -161,10 +151,7 @@ export default function ChatPage() {
         }
       });
 
-      // Mark as read via WebSocket
       wsService.markAsRead(conversationId);
-
-      // Also mark via HTTP for persistence
       await apiService.markAsRead(conversationId);
     } catch (error) {
       console.error('Failed to load messages:', error);
@@ -172,7 +159,6 @@ export default function ChatPage() {
   };
 
   const handleSelectConversation = (conversation: any) => {
-    // Leave previous conversation
     if (selectedConversation) {
       wsService.leaveConversation(selectedConversation.id);
     }
@@ -183,12 +169,10 @@ export default function ChatPage() {
     loadMessages(conversation.id);
   };
 
-  // ✅ FIXED: Send button handler
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!messageInput.trim() || !selectedConversation || sending) {
-      console.log('⚠️ Cannot send - empty message or no conversation selected or already sending');
       return;
     }
 
@@ -196,33 +180,21 @@ export default function ChatPage() {
     setMessageInput('');
     setSending(true);
 
-    // Stop typing indicator
     if (isTyping) {
       wsService.sendTyping(selectedConversation.id, false);
       setIsTyping(false);
     }
 
     try {
-      console.log('📤 Attempting to send message:', tempMessage);
-
-      // Send via WebSocket for real-time delivery
       if (wsService.isConnected()) {
-        console.log('✅ Sending via WebSocket');
         wsService.sendMessage(selectedConversation.id, tempMessage);
-
-        // Note: The message will be added to the UI when we receive it back
-        // from the WebSocket subscription in subscribeToConversation()
       } else {
-        // Fallback to HTTP if WebSocket disconnected
-        console.log('⚠️ WebSocket not connected, falling back to HTTP');
         const response = await apiService.sendMessage(
           selectedConversation.id,
           tempMessage
         );
-        // Add to messages manually since WebSocket didn't broadcast
         setMessages((prev) => [...prev, response.data]);
 
-        // Update conversation last message
         setConversations((prev) =>
           prev.map((conv) =>
             conv.id === selectedConversation.id
@@ -233,7 +205,6 @@ export default function ChatPage() {
       }
     } catch (error) {
       console.error('❌ Failed to send message:', error);
-      // Restore message input on error
       setMessageInput(tempMessage);
       alert('Failed to send message. Please try again.');
     } finally {
@@ -244,18 +215,15 @@ export default function ChatPage() {
   const handleTyping = () => {
     if (!selectedConversation) return;
 
-    // Send typing indicator
     if (!isTyping) {
       wsService.sendTyping(selectedConversation.id, true);
       setIsTyping(true);
     }
 
-    // Clear existing timeout
     if (typingTimeoutRef.current) {
       clearTimeout(typingTimeoutRef.current);
     }
 
-    // Set timeout to stop typing indicator
     typingTimeoutRef.current = setTimeout(() => {
       wsService.sendTyping(selectedConversation.id, false);
       setIsTyping(false);
@@ -270,10 +238,8 @@ export default function ChatPage() {
     try {
       const response = await apiService.createConversation(newConvMessage);
 
-      // Add new conversation to list
       setConversations((prev) => [response.data, ...prev]);
 
-      // Select the new conversation
       setShowNewConversation(false);
       setNewConvMessage('');
       handleSelectConversation(response.data);
@@ -299,6 +265,21 @@ export default function ChatPage() {
     }
   };
 
+  // Get user initials for avatar
+  const getUserInitials = (name: string) => {
+    return name
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .toUpperCase()
+      .slice(0, 2);
+  };
+
+  // Get current user's full name
+  const currentUserName = userData?.firstName && userData?.lastName
+    ? `${userData.firstName} ${userData.lastName}`
+    : user?.email || 'User';
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100">
@@ -314,24 +295,47 @@ export default function ChatPage() {
     <div className="flex h-screen bg-gray-100">
       {/* Sidebar - Conversations */}
       <div className="w-80 bg-white border-r flex flex-col">
-        <div className="p-4 border-b">
-          <div className="flex justify-between items-center mb-3">
-            <h2 className="text-xl font-bold">Conversations</h2>
+        {/* User Profile Section */}
+        <div className="p-4 border-b bg-gradient-to-r from-blue-500 to-blue-600">
+          <div className="flex items-center space-x-3 mb-3">
+            {/* Avatar */}
+            <div className="w-12 h-12 rounded-full bg-white text-blue-600 flex items-center justify-center font-bold text-lg shadow-md">
+              {getUserInitials(currentUserName)}
+            </div>
+
+            {/* User Info */}
+            <div className="flex-1 text-white">
+              <p className="font-semibold text-sm">{currentUserName}</p>
+              <p className="text-xs opacity-90 truncate">{user?.uid}</p>
+            </div>
+
+            {/* Logout Button */}
             <button
               onClick={handleLogout}
-              className="text-sm text-red-600 hover:text-red-800"
+              className="text-white hover:bg-white hover:bg-opacity-20 p-2 rounded-lg transition"
+              title="Logout"
             >
-              Logout
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+              </svg>
             </button>
           </div>
+
+          {/* New Conversation Button */}
           <button
             onClick={() => setShowNewConversation(true)}
-            className="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition"
+            className="w-full bg-white text-blue-600 py-2 px-4 rounded-lg hover:bg-opacity-90 transition font-medium text-sm shadow-md"
           >
             + New Conversation
           </button>
         </div>
 
+        {/* Conversations Header */}
+        <div className="px-4 py-3 border-b bg-gray-50">
+          <h2 className="text-lg font-bold text-gray-800">Messages</h2>
+        </div>
+
+        {/* Conversations List */}
         <div className="overflow-y-auto flex-1">
           {conversations.length === 0 ? (
             <div className="text-center text-gray-500 mt-8 px-4">
@@ -392,16 +396,30 @@ export default function ChatPage() {
         {selectedConversation ? (
           <>
             {/* Chat Header */}
-            <div className="bg-white p-4 border-b">
+            <div className="bg-white p-4 border-b shadow-sm">
               <div className="flex justify-between items-center">
-                <div>
-                  <h3 className="font-semibold text-lg">
-                    {selectedConversation.customer?.firstName}{' '}
-                    {selectedConversation.customer?.lastName}
-                  </h3>
-                  <p className="text-sm text-gray-500">
-                    {selectedConversation.status}
-                  </p>
+                <div className="flex items-center space-x-3">
+                  {/* Participant Avatar */}
+                  <div className="w-10 h-10 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center font-bold">
+                    {getUserInitials(`${selectedConversation.customer?.firstName} ${selectedConversation.customer?.lastName}`)}
+                  </div>
+
+                  <div>
+                    <h3 className="font-semibold text-lg">
+                      {selectedConversation.customer?.firstName}{' '}
+                      {selectedConversation.customer?.lastName}
+                    </h3>
+                    <p className="text-sm text-gray-500">
+                      {selectedConversation.participantOnline ? (
+                        <span className="text-green-600 flex items-center">
+                          <span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>
+                          Online
+                        </span>
+                      ) : (
+                        <span>{selectedConversation.status}</span>
+                      )}
+                    </p>
+                  </div>
                 </div>
                 {selectedConversation.status === 'OPEN' && (
                   <button
@@ -415,7 +433,7 @@ export default function ChatPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-50">
               {messages.map((msg) => {
                 const isOwnMessage = msg.senderId === userData?.id;
 
@@ -424,23 +442,40 @@ export default function ChatPage() {
                     key={msg.id}
                     className={`flex ${isOwnMessage ? 'justify-end' : 'justify-start'}`}
                   >
-                    <div
-                      className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${
-                        isOwnMessage
-                          ? 'bg-blue-500 text-white'
-                          : 'bg-gray-200 text-gray-800'
-                      }`}
-                    >
+                    <div className={`flex items-end space-x-2 max-w-xs lg:max-w-md ${isOwnMessage ? 'flex-row-reverse space-x-reverse' : ''}`}>
+                      {/* Avatar for other user */}
                       {!isOwnMessage && (
-                        <p className="text-sm font-semibold mb-1">
-                          {msg.senderName}
-                        </p>
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center font-bold text-xs flex-shrink-0">
+                          {getUserInitials(msg.senderName || 'U')}
+                        </div>
                       )}
-                      <p>{msg.content}</p>
-                      <p className="text-xs mt-1 opacity-75">
-                        {new Date(msg.createdAt).toLocaleTimeString()}
-                        {msg.readAt && isOwnMessage && ' • Read'}
-                      </p>
+
+                      {/* Message Bubble */}
+                      <div
+                        className={`px-4 py-2 rounded-2xl shadow-sm ${
+                          isOwnMessage
+                            ? 'bg-blue-500 text-white rounded-br-none'
+                            : 'bg-white text-gray-800 rounded-bl-none'
+                        }`}
+                      >
+                        {!isOwnMessage && (
+                          <p className="text-xs font-semibold mb-1 opacity-75">
+                            {msg.senderName}
+                          </p>
+                        )}
+                        <p className="break-words">{msg.content}</p>
+                        <p className={`text-xs mt-1 ${isOwnMessage ? 'text-blue-100' : 'text-gray-500'}`}>
+                          {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {msg.readAt && isOwnMessage && (
+                            <span className="ml-1">
+                              <svg className="w-4 h-4 inline" fill="currentColor" viewBox="0 0 20 20">
+                                <path d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"/>
+                                <path d="M12.707 5.293a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414l4-4a1 1 0 011.414 0z"/>
+                              </svg>
+                            </span>
+                          )}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 );
@@ -449,11 +484,16 @@ export default function ChatPage() {
               {/* Typing Indicator */}
               {typingUsers.size > 0 && (
                 <div className="flex justify-start">
-                  <div className="bg-gray-200 text-gray-800 px-4 py-2 rounded-lg">
-                    <div className="flex space-x-1">
-                      <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce"></div>
-                      <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                      <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                  <div className="flex items-end space-x-2">
+                    <div className="w-8 h-8 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 text-white flex items-center justify-center font-bold text-xs">
+                      ...
+                    </div>
+                    <div className="bg-white text-gray-800 px-4 py-3 rounded-2xl rounded-bl-none shadow-sm">
+                      <div className="flex space-x-1">
+                        <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce"></div>
+                        <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                        <div className="w-2 h-2 bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -479,21 +519,30 @@ export default function ChatPage() {
                     }
                   }}
                   placeholder="Type a message..."
-                  className="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="flex-1 border rounded-full px-6 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   disabled={sending}
                 />
                 <button
                   type="submit"
                   disabled={!messageInput.trim() || sending}
-                  className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="bg-blue-500 text-white px-6 py-3 rounded-full hover:bg-blue-600 transition disabled:opacity-50 disabled:cursor-not-allowed shadow-md"
                 >
-                  {sending ? 'Sending...' : 'Send'}
+                  {sending ? (
+                    <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M10.894 2.553a1 1 0 00-1.788 0l-7 14a1 1 0 001.169 1.409l5-1.429A1 1 0 009 15.571V11a1 1 0 112 0v4.571a1 1 0 00.725.962l5 1.428a1 1 0 001.17-1.408l-7-14z"/>
+                    </svg>
+                  )}
                 </button>
               </div>
             </form>
           </>
         ) : (
-          <div className="flex-1 flex items-center justify-center text-gray-500">
+          <div className="flex-1 flex items-center justify-center text-gray-500 bg-gray-50">
             <div className="text-center">
               <svg
                 className="w-24 h-24 mx-auto mb-4 text-gray-300"
@@ -517,7 +566,7 @@ export default function ChatPage() {
       {/* New Conversation Modal */}
       {showNewConversation && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4 shadow-2xl">
             <h3 className="text-xl font-bold mb-4">Start New Conversation</h3>
             <form onSubmit={handleCreateConversation}>
               <textarea
