@@ -42,12 +42,7 @@ public class EnhancedWebSocketConfig implements WebSocketMessageBrokerConfigurer
         registry.addEndpoint("/ws/chat")
                 .setAllowedOriginPatterns(
                         "http://localhost:3000",
-                        "http://localhost:4000",
-                        "http://217.15.162.33:4000",
-                        "http://217.15.162.33:3000",
-                        "http://192.168.100.43:3000",
-                        "https://consultinghub.xyz",
-                        "https://admin.consultinghub.xyz"
+                        "http://localhost:3001"
                 )
                 .withSockJS()
                 .setStreamBytesLimit(512 * 1024) // 512KB

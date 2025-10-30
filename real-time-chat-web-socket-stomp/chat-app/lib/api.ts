@@ -24,6 +24,19 @@ class ApiService {
       },
       (error) => Promise.reject(error)
     );
+
+    // Add response interceptor for error handling
+    this.api.interceptors.response.use(
+      (response) => response,
+      (error) => {
+        if (error.response?.status === 401) {
+          // Token expired or invalid
+          localStorage.removeItem('firebaseToken');
+          window.location.href = '/';
+        }
+        return Promise.reject(error);
+      }
+    );
   }
 
   // Auth
@@ -40,10 +53,9 @@ class ApiService {
     return response.data;
   }
 
-  // Conversations
-  async createConversation(customerId: number, initialMessage: string) {
+  // ✅ FIXED: Conversations - backend expects only initialMessage
+  async createConversation(initialMessage: string) {
     const response = await this.api.post('/api/v1/chat/conversations', {
-      customerId,
       initialMessage,
     });
     return response.data;
@@ -81,7 +93,7 @@ class ApiService {
     return response.data;
   }
 
-  // Messages
+  // Messages - Keep HTTP for fallback, but prefer WebSocket
   async sendMessage(conversationId: number, content: string, messageType = 'TEXT') {
     const response = await this.api.post('/api/v1/chat/messages', {
       conversationId,
@@ -124,8 +136,21 @@ class ApiService {
     return response.data;
   }
 
+  async getConversationUnread(conversationId: number) {
+    const response = await this.api.get(`/api/v1/chat/conversations/${conversationId}/unread`);
+    return response.data;
+  }
+
   async getChatStats() {
     const response = await this.api.get('/api/v1/chat/stats');
+    return response.data;
+  }
+
+  // Search
+  async searchConversations(searchTerm: string, page = 0, size = 20) {
+    const response = await this.api.get('/api/v1/chat/conversations/search', {
+      params: { searchTerm, page, size },
+    });
     return response.data;
   }
 }

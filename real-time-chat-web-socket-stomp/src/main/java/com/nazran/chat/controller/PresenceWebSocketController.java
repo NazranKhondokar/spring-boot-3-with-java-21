@@ -9,15 +9,16 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.messaging.handler.annotation.DestinationVariable;
 import org.springframework.messaging.handler.annotation.MessageMapping;
 import org.springframework.messaging.handler.annotation.Payload;
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.Map;
 
 /**
  * WebSocket controller for handling user presence updates.
+ * Updated to use path variables instead of @AuthenticationPrincipal
  */
 @Slf4j
 @RestController
@@ -32,18 +33,20 @@ public class PresenceWebSocketController {
      * Handle user presence update (heartbeat).
      * Client should send this periodically to maintain online status.
      *
-     * @param payload   the presence data
-     * @param firebaseUserId the authenticated user's Firebase UID
+     * URL: /app/presence/heartbeat/{firebaseUserId}
+     *
+     * @param firebaseUserId the Firebase user ID from path
+     * @param payload        the presence data
      */
-    @MessageMapping("/presence/heartbeat")
+    @MessageMapping("/presence/heartbeat/{firebaseUserId}")
     @Operation(
             summary = "Send presence heartbeat",
             description = "Client sends periodic heartbeat to maintain online status. Should be sent every 30-60 seconds."
     )
     public void handlePresenceHeartbeat(
+            @DestinationVariable String firebaseUserId,
             @Parameter(description = "Presence data including device information")
-            @Payload Map<String, Object> payload,
-            @AuthenticationPrincipal String firebaseUserId) {
+            @Payload Map<String, Object> payload) {
 
         log.debug("Presence heartbeat from user: {}", firebaseUserId);
 
@@ -63,18 +66,20 @@ public class PresenceWebSocketController {
     /**
      * Handle user going online explicitly.
      *
-     * @param payload   the presence data
-     * @param firebaseUserId the authenticated user's Firebase UID
+     * URL: /app/presence/online/{firebaseUserId}
+     *
+     * @param firebaseUserId the Firebase user ID from path
+     * @param payload        the presence data
      */
-    @MessageMapping("/presence/online")
+    @MessageMapping("/presence/online/{firebaseUserId}")
     @Operation(
             summary = "Mark user as online",
             description = "Explicitly marks the user as online when they connect or become active."
     )
     public void handleUserOnline(
+            @DestinationVariable String firebaseUserId,
             @Parameter(description = "Presence data including device information")
-            @Payload Map<String, Object> payload,
-            @AuthenticationPrincipal String firebaseUserId) {
+            @Payload Map<String, Object> payload) {
 
         log.info("User going online: {}", firebaseUserId);
 
@@ -93,14 +98,16 @@ public class PresenceWebSocketController {
     /**
      * Handle user going offline explicitly.
      *
-     * @param firebaseUserId the authenticated user's Firebase UID
+     * URL: /app/presence/offline/{firebaseUserId}
+     *
+     * @param firebaseUserId the Firebase user ID from path
      */
-    @MessageMapping("/presence/offline")
+    @MessageMapping("/presence/offline/{firebaseUserId}")
     @Operation(
             summary = "Mark user as offline",
             description = "Explicitly marks the user as offline when they disconnect or become inactive."
     )
-    public void handleUserOffline(@AuthenticationPrincipal String firebaseUserId) {
+    public void handleUserOffline(@DestinationVariable String firebaseUserId) {
 
         log.info("User going offline: {}", firebaseUserId);
 
@@ -122,7 +129,7 @@ public class PresenceWebSocketController {
      * Retrieves user by Firebase User ID or throws an exception.
      *
      * @param firebaseUserId the Firebase user ID to search for
-     * @return the found User entity
+     * @return the user ID
      * @throws CustomMessagePresentException if no user found with the Firebase ID
      */
     private Integer getUserIdFromFirebaseUid(String firebaseUserId) {

@@ -48,7 +48,8 @@ public class SecurityConfig {
             "/configuration/security/**",
             "/swagger-ui/**",
             "/api/v1/auth/**",
-            "/webjars/**"
+            "/webjars/**",
+            "/ws/chat/**",
     };
 
     /**
